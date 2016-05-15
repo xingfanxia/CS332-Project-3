@@ -1,4 +1,4 @@
-/*
+  /*
  * student.c
  * This file contains the CPU scheduler for the simulation.  
  * original base code from http://www.cc.gatech.edu/~rama/CS2200
@@ -139,7 +139,14 @@ static void schedule(unsigned int cpu_id) {
     if (proc!=NULL) {
         proc->state = PROCESS_RUNNING;
     }
-    context_switch(cpu_id, proc, -1); 
+    if (alg == FIFO) {
+    context_switch(cpu_id, proc, -1);
+    }
+    if (alg == RoundRobin) {
+      context_switch(cpu_id, proc, time_slice);
+    }
+    if (alg == StaticPriority) {
+    }
 }
 
 
@@ -151,7 +158,15 @@ static void schedule(unsigned int cpu_id) {
  *
  * THIS FUNCTION MUST BE IMPLEMENTED FOR ROUND ROBIN OR PRIORITY SCHEDULING
  */
-extern void preempt(unsigned int cpu_id) {}
+extern void preempt(unsigned int cpu_id) {
+    pcb_t* pcb;
+    pthread_mutex_lock(&current_mutex);
+    pcb = current[cpu_id];
+    pcb->state = PROCESS_READY;
+    pthread_mutex_unlock(&current_mutex);
+    addReadyProcess(pcb);
+    schedule(cpu_id);
+}
 
 
 /*
