@@ -18,6 +18,9 @@
 static void addReadyProcess(pcb_t* proc); 
 static pcb_t* getReadyProcess(void); 
 static void schedule(unsigned int cpu_id);
+static pcb_t* pop_from_ready();
+static pcb_t* pop_high_priority();
+
 
 /*
  * enum is useful C language construct to associate desriptive words with integer values
@@ -130,7 +133,13 @@ extern void idle(unsigned int cpu_id)
  * THIS FUNCTION IS PARTIALLY COMPLETED - REQUIRES MODIFICATION
  */
 static void schedule(unsigned int cpu_id) {
-    pcb_t* proc = getReadyProcess();
+    pcb_t *proc;
+    
+    if (alg == StaticPriority) {
+      proc = pop_high_priority();
+    } else {
+      proc = getReadyProcess();
+    }
 
     pthread_mutex_lock(&current_mutex);
     current[cpu_id] = proc;
@@ -139,14 +148,61 @@ static void schedule(unsigned int cpu_id) {
     if (proc!=NULL) {
         proc->state = PROCESS_RUNNING;
     }
-    if (alg == FIFO) {
-    context_switch(cpu_id, proc, -1);
+
+    if (alg == FIFO || alg == StaticPriority) {
+      context_switch(cpu_id, proc, -1);
     }
+
     if (alg == RoundRobin) {
       context_switch(cpu_id, proc, time_slice);
     }
-    if (alg == StaticPriority) {
+
+    pthread_mutex_lock(&current_mutex);
+    current[cpu_id] = proc;
+    pthread_mutex_unlock(&current_mutex);
+
+}
+
+/* pop highest priority process from the ready queue */
+static pcb_t* pop_high_priority() {
+    pcb_t *popped,*curr,*prev;
+    int highest = 0;
+    pthread_mutex_lock(&ready_mutex);
+    /* check if queue is empty */
+    if(head == NULL) {
+        popped = NULL;
     }
+    else {
+        curr = head;
+        /*  find the highest priority in the queue by looping through once */
+        while(curr != NULL) {
+            if(curr->static_priority > highest) {
+                highest = curr->static_priority;
+            }
+            curr = curr->next;
+        }
+        curr = head;
+        prev = head;
+        /* loop through one more time
+           find the first process that matches
+           the highest priority found earlier */
+        while(curr != NULL) {
+            if(curr->static_priority == highest) {
+                popped = curr;
+                if(curr==head) {
+                    head = curr->next;
+                }
+                else {
+                    prev->next = curr->next;
+                }
+                break;
+            }
+            prev = curr;
+            curr = curr->next;
+        }
+    }
+    pthread_mutex_unlock(&ready_mutex);
+    return popped;
 }
 
 
@@ -221,8 +277,34 @@ extern void terminate(unsigned int cpu_id) {
  * THIS FUNCTION IS PARTIALLY COMPLETED - REQUIRES MODIFICATION
  */
 extern void wake_up(pcb_t *process) {
+    int i,lowest,low_id;
     process->state = PROCESS_READY;
     addReadyProcess(process);
+    /* loop for processes to evict if static priority mode */
+    if(alg == StaticPriority) {
+        pthread_mutex_lock(&current_mutex);
+        low_id = -1;
+        lowest = 10;
+        /* loop through all CPUs */
+        for(i=0; i<cpu_count; i++) {
+                /* if find IDLE, stop looking */
+                if(current[i] == NULL) {
+                    low_id = -1;
+                    break;
+                }
+                /* grab the lowest priority available */
+                if(current[i]->static_priority < lowest) {
+                    lowest = current[i]->static_priority;
+                    low_id = i;
+                }
+        }
+        pthread_mutex_unlock(&current_mutex);
+        /* evict the process if found and lower priority than our process */
+        if(low_id != -1 && lowest < process->static_priority) {
+            force_preempt(low_id); 
+        }
+    }
+
 }
 
 
