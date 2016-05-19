@@ -3,6 +3,7 @@
  * This file contains the CPU scheduler for the simulation.  
  * original base code from http://www.cc.gatech.edu/~rama/CS2200
  * Last modified 5/11/2016 by Sherri Goings
+ * @modified by Xingfan Xia and Kiet Tran
  */
 
 #include <assert.h>
@@ -64,6 +65,7 @@ int main(int argc, char *argv[])
 	else if (argc > 2 && strcmp(argv[2],"-p")==0) {
 		alg = StaticPriority;
 		printf("running with static priority\n");
+    //currently SP only works with 3 or 4 CPU .. Don't know why
 	}
 	else {
         fprintf(stderr, "Usage: ./os-sim <# CPUs> [ -r <time slice> | -p ]\n"
@@ -135,31 +137,27 @@ extern void idle(unsigned int cpu_id)
 static void schedule(unsigned int cpu_id) {
     pcb_t *proc;
     
-    if (alg == StaticPriority) {
-      proc = pop_high_priority();
-    } else {
+    if (alg == StaticPriority) { //if it is SP, do the poping way
+      proc = pop_high_priority(); 
+    } else { //otherwise, keep the normal way
       proc = getReadyProcess();
     }
 
     pthread_mutex_lock(&current_mutex);
-    current[cpu_id] = proc;
+    current[cpu_id] = proc; //get cpuID
     pthread_mutex_unlock(&current_mutex);
 
-    if (proc!=NULL) {
+    if (proc!=NULL) { 
         proc->state = PROCESS_RUNNING;
     }
 
-    if (alg == FIFO || alg == StaticPriority) {
+    if (alg == FIFO || alg == StaticPriority) { //for FIFO and SP
       context_switch(cpu_id, proc, -1);
     }
 
-    if (alg == RoundRobin) {
+    if (alg == RoundRobin) { //for RR
       context_switch(cpu_id, proc, time_slice);
     }
-
-    pthread_mutex_lock(&current_mutex);
-    current[cpu_id] = proc;
-    pthread_mutex_unlock(&current_mutex);
 
 }
 
@@ -168,13 +166,13 @@ static pcb_t* pop_high_priority() {
     pcb_t *popped,*curr,*prev;
     int highest = 0;
     pthread_mutex_lock(&ready_mutex);
-    /* check if queue is empty */
+    // check if queue is empty
     if(head == NULL) {
         popped = NULL;
     }
     else {
         curr = head;
-        /*  find the highest priority in the queue by looping through once */
+        //  find the highest priority in the queue by looping through once
         while(curr != NULL) {
             if(curr->static_priority > highest) {
                 highest = curr->static_priority;
@@ -202,7 +200,7 @@ static pcb_t* pop_high_priority() {
         }
     }
     pthread_mutex_unlock(&ready_mutex);
-    return popped;
+    return popped; //return process
 }
 
 
@@ -216,9 +214,9 @@ static pcb_t* pop_high_priority() {
  */
 extern void preempt(unsigned int cpu_id) {
     pcb_t* pcb;
-    pthread_mutex_lock(&current_mutex);
-    pcb = current[cpu_id];
-    pcb->state = PROCESS_READY;
+    pthread_mutex_lock(&current_mutex); //lock
+    pcb = current[cpu_id]; 
+    pcb->state = PROCESS_READY; //throw back to ready queue
     pthread_mutex_unlock(&current_mutex);
     addReadyProcess(pcb);
     schedule(cpu_id);
@@ -280,26 +278,26 @@ extern void wake_up(pcb_t *process) {
     int i,lowest,low_id;
     process->state = PROCESS_READY;
     addReadyProcess(process);
-    /* loop for processes to evict if static priority mode */
+    // loop for processes to evict if static priority mode 
     if(alg == StaticPriority) {
         pthread_mutex_lock(&current_mutex);
         low_id = -1;
         lowest = 10;
-        /* loop through all CPUs */
+        //loop through all CPUs 
         for(i=0; i<cpu_count; i++) {
                 /* if find IDLE, stop looking */
                 if(current[i] == NULL) {
                     low_id = -1;
                     break;
                 }
-                /* grab the lowest priority available */
+                // grab the lowest priority available 
                 if(current[i]->static_priority < lowest) {
                     lowest = current[i]->static_priority;
                     low_id = i;
                 }
         }
         pthread_mutex_unlock(&current_mutex);
-        /* evict the process if found and lower priority than our process */
+        // evict the process if found and lower priority than our process
         if(low_id != -1 && lowest < process->static_priority) {
             force_preempt(low_id); 
         }
